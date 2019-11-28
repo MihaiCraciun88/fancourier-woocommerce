@@ -6,7 +6,7 @@ session_start();
 Plugin Name: FAN Courier+
 Plugin URI: http://www.fancourier.ro
 Description: Modul de livrare FAN Curier refactorizat
-Version: 1.3.0
+Version: 1.3.5
 Author: FAN Courier
 Author URI: http://fancourier.ro
 License: GPL2
@@ -324,7 +324,7 @@ if (in_array('woocommerce/woocommerce.php', apply_filters('active_plugins', get_
                 global $woocommerce;
                 // ------------ campuri modul START ------------------
                 $FAN_clientId                  = $this->get_option('FAN_clientID');
-                $FAN_clientAccount             = $this->get_option('FAN_clientAccount');
+                $FAN_clientAccount             = $this->get_option('FAN_clientAccount'); 
                 $FAN_password                  = $this->get_option('FAN_password');
                 $FAN_confirmAWB                = $this->get_option('FAN_confirmAWB');
                 $FAN_parcelShipping            = $this->get_option('FAN_parcelShipping');
@@ -360,6 +360,13 @@ if (in_array('woocommerce/woocommerce.php', apply_filters('active_plugins', get_
                 $billing_company               = $woocommerce->session->get('billing_company');
                 $billing_email                 = $woocommerce->session->get('billing_email');
                 $billing_phone                 = $woocommerce->session->get('billing_phone');
+				$shipping_first_name		   = $woocommerce->session->get('shipping_first_name');
+				$shipping_last_name			   = $woocommerce->session->get('shipping_last_name');
+				$shipping_to_differen_address  = $woocommerce->session->get('ship_to_different_address');
+				if($shipping_to_differen_address){
+					$billing_first_name = $shipping_first_name;
+					$billing_last_name  = $shipping_last_name;
+				}
                 $observatii                    = $FAN_obsOnAWB;
                 //
                 $judete                        = array(
@@ -533,7 +540,7 @@ if (in_array('woocommerce/woocommerce.php', apply_filters('active_plugins', get_
                         }
                     }
                     //---------- Preluare adresa, nume, telefon, email START --------------
-                    if (trim($billing_company) != '') {
+                    if (!empty($billing_company)) {
                         $nume_destinatar  = $billing_company;
                         $persoana_contact = $billing_first_name . " " . $billing_last_name;
                     } else {
@@ -652,8 +659,9 @@ if (in_array('woocommerce/woocommerce.php', apply_filters('active_plugins', get_
     add_filter('woocommerce_checkout_fields', 'suprascriere_propr_campuri');
     function suprascriere_propr_campuri($fields)
     {
-        $fields['billing']['billing_state']['class'][] = 'update_totals_on_change';
-        $fields['billing']['billing_city']['class'][]  = 'update_totals_on_change';
+        $fields['billing']['billing_state']['class'][]  = 'update_totals_on_change';
+        $fields['billing']['billing_city']['class'][]   = 'update_totals_on_change';
+		$fields['billing']['billing_phone']['class'][]  = 'update_totals_on_change';
         return $fields;
     }
     add_action('woocommerce_shipping_init', 'fan_courier_init');
@@ -681,18 +689,22 @@ if (in_array('woocommerce/woocommerce.php', apply_filters('active_plugins', get_
     {
         $fields['billing']['billing_state']['required']   = true;
         $fields['shipping']['shipping_state']['required'] = true;
+		$fields['billing']['billing_phone']['required'] = true;
+
         return $fields;
     }
     add_action('woocommerce_checkout_update_order_review', 'get_customer_details');
     function get_customer_details($post_data)
     {
-        global $woocommerce;
+		$update_shipping_awb = true;
         $details = array(
             'billing_first_name',
             'billing_last_name',
             'billing_company',
             'billing_email',
-            'billing_phone'
+            'billing_phone',
+			'shipping_first_name',
+			'shipping_last_name',
         );
         $post    = array();
         $vars    = explode('&', $post_data);
@@ -701,10 +713,30 @@ if (in_array('woocommerce/woocommerce.php', apply_filters('active_plugins', get_
             $post[$v[0]] = $v[1];
         }
         foreach ($details as $key) {
-            if (isset($post[$key]))
-                $woocommerce->session->set($key, $post[$key]);
+			if(isset($post[$key])){
+				WC()->session->set($key, $post[$key]);
+				if (empty($post[$key]) and !in_array($key,  array('billing_company', 'shipping_first_name', 'shipping_last_name'))){
+					$update_shipping_awb = false;
+				}
+			}
         }
+		if(isset($post['ship_to_different_address'])){
+			WC()->session->set('ship_to_different_address', true);
+		}else{
+			WC()->session->set('ship_to_different_address', false);
+		}
+		if(isset($post['tip_facturare'])){
+			if($post['tip_facturare'] == 'pers-fiz'){
+				WC()->session->set('billing_company', '');
+			}
+		}
+		if($update_shipping_awb){
+			foreach ( WC()->cart->get_shipping_packages() as $package_key => $package ){
+				WC()->session->set( 'shipping_for_package_' . $package_key, true);
+			}
+		}
     }
+	
     //-----------------------------FAN stop------------------------
     
 }
