@@ -11,6 +11,9 @@ If you want to fix this: https://stackoverflow.com/questions/9774349/php-curl-no
 ## Bugs
 AWB is generated inside FanCourier SelfAWB before order has been send.
 
+AWB isn't generated if client complete First Name and Last Name checkout fields last. These dosen't trigger calculate_shipping() method.
+You might want to fix this by adding update_totals_on_change class to these fields.
+
 # Changelog
 ## 1.3.5
 calculate_shipping trigger for phone number (can be extended for name and other fields, see function get_customer_details())
