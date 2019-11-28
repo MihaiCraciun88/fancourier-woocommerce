@@ -8,6 +8,9 @@ A refactored version of FAN Courier module for WooCommerce 3.x
 Please note this module dosen't use SSL for cURL require. Using this, you might have a data leak.
 If you want to fix this: https://stackoverflow.com/questions/9774349/php-curl-not-working-with-https
 
+## Bugs
+AWB is generated inside FanCourier SelfAWB before order has been send.
+
 # Changelog
 ## 1.3.5
 calculate_shipping trigger for phone number (can be extended for name and other fields, see function get_customer_details())
