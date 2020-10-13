@@ -1,20 +1,17 @@
 <?php
-session_start();
-//error_reporting(E_ALL);
-//ini_set('display_errors', 1);
 /*
 Plugin Name: FAN Courier+
 Plugin URI: http://www.fancourier.ro
 Description: Modul de livrare FAN Curier refactorizat
-Version: 1.3.5
+Version: 1.3.6
 Author: FAN Courier
 Author URI: http://fancourier.ro
 License: GPL2
 */
 if (!defined('ABSPATH')) {
     exit; //Exit if accessed directly (for safety)
-    
 }
+
 //varibile globale pentru tip serviciu si link order
 if (in_array('woocommerce/woocommerce.php', apply_filters('active_plugins', get_option('active_plugins')))) {
     $dir = plugin_dir_path(__FILE__);
@@ -27,11 +24,11 @@ if (in_array('woocommerce/woocommerce.php', apply_filters('active_plugins', get_
             {
                 global $woocommerce;
                 unset($woocommerce->session->subtotal);
-                $this->type               = addslashes($_POST['payment_method']);
+                $this->type               = isset($_POST['payment_method']) ? addslashes($_POST['payment_method']) : '';
                 $this->id                 = 'fan_courier';
                 $this->method_title       = 'FAN Courier';
                 $this->method_description = __('Stimate client, puteti obtine informatii pentru configurare la adresa de email: <a href="mailto:selfawb@fancourier.ro">selfawb@fancourier.ro</a><br>
-								   Va multumim pentru ca folositi serviciile FAN Courier.', 'woocommerce');
+                                   Va multumim pentru ca folositi serviciile FAN Courier.', 'woocommerce');
                 $this->title              = 'FAN Courier';
                 $this->enabled            = "yes";
                 $this->init();
@@ -246,27 +243,24 @@ if (in_array('woocommerce/woocommerce.php', apply_filters('active_plugins', get_
                         'type' => 'title'
                     ),
                     'FAN_redCodeOption' => array(
-                    'title' 		=> __('Afisare optiune RedCode', 'woocommerce'),
-                    'type' 			=> 'select',
-                    'default' 		=> 'no',
-                    'css' 			=> 'width:350px;',
-                    'options'		=> array(
-                    'no' 	    => __('No', 'woocommerce'),
-                    'yes' 	    => __('Yes', 'woocommerce')
+                        'title'         => __('Afisare optiune RedCode', 'woocommerce'),
+                        'type'             => 'select',
+                        'default'         => 'no',
+                        'css'             => 'width:350px;',
+                        'options'        => array(
+                            'no'         => __('No', 'woocommerce'),
+                            'yes'         => __('Yes', 'woocommerce')
+                        ),
                     ),
-                    
-                    ),
-                    
                     'FAN_expressLocoOption' => array(
-                    'title' 		=> __('Afisare optiune ExpressLoco', 'woocommerce'),
-                    'type' 			=> 'select',
-                    'default' 		=> 'no',
-                    'css' 			=> 'width:350px;',
-                    'options'		=> array(
-                    'no' 	    => __('No', 'woocommerce'),
-                    'yes' 	    => __('Yes', 'woocommerce')
-                    ),
-                    
+                        'title'         => __('Afisare optiune ExpressLoco', 'woocommerce'),
+                        'type'             => 'select',
+                        'default'         => 'no',
+                        'css'             => 'width:350px;',
+                        'options'        => array(
+                            'no'         => __('No', 'woocommerce'),
+                            'yes'         => __('Yes', 'woocommerce')
+                        ),
                     ),
                     'FAN_servicesOptions' => array(
                         'title' => __('Optiuni servicii: ', 'woocommerce'),
@@ -311,15 +305,34 @@ if (in_array('woocommerce/woocommerce.php', apply_filters('active_plugins', get_
             public function admin_options()
             {
                 $url = plugins_url();
-                echo '<h3>FAN Courier - Romania</h3>
-                        <p>Stimate client, puteti obtine informatii despre configurare la adresa de email: <a href="mailto:selfawb@fancourier.ro" style="text-decoration:none;">selfawb@fancourier.ro</a></p>
-                        <p>Va multumim pentru ca folositi serviciile FAN Courier.</p>
-
+                echo '<h3>' . $this->method_title . ' - Romania</h3>
+                      <p>' . $this->method_description . '</p>
                     <table class="form-table">';
                 $this->generate_settings_html();
                 echo '</table>';
             }
-            function calculate_shipping($package = array())
+            public function request($script, $data = [])
+            {
+                $FAN_clientId                  = $this->get_option('FAN_clientID');
+                $FAN_clientAccount             = $this->get_option('FAN_clientAccount');
+                $FAN_password                  = $this->get_option('FAN_password');
+                
+                $data = $data + [
+                    'username'    => $FAN_clientAccount,
+                    'user_pass'   => $FAN_password,
+                    'client_id'   => $FAN_clientId,
+                ]; 
+                
+                $url = 'https://www.selfawb.ro/' . $script;
+                $c   = curl_init($url);
+                curl_setopt($c, CURLOPT_POST, true);
+                curl_setopt($c, CURLOPT_POSTFIELDS, $data);
+                curl_setopt($c, CURLOPT_RETURNTRANSFER, true);
+                $result = curl_exec($c);
+                curl_close($c);
+                return $result;
+            }
+            public function calculate_shipping($package = array())
             {
                 global $woocommerce;
                 // ------------ campuri modul START ------------------
@@ -346,10 +359,12 @@ if (in_array('woocommerce/woocommerce.php', apply_filters('active_plugins', get_
                 $FAN_contactPerson             = $this->get_option('FAN_contactPerson');
                 $FAN_openOnDelivery            = $this->get_option('FAN_openOnDelivery');
                 $FAN_epod                      = $this->get_option('FAN_epod');
+                $FAN_expressLocoOption         = 'no';
+                $FAN_redCodeOption             = 'no';
                 // -------------campuri modul STOP ----------------------
                 $adresaDestinatar              = $package['destination']['address'];
                 $adresaDestinatar_2            = $package['destination']['address_2'];
-                $orasDestinatar                = $package['destination']['city'];
+                $orasDestinatar                = remove_accents($package['destination']['city']);
                 $judetDestinatar               = $package['destination']['state'];
                 $codPostal                     = $package['destination']['postcode'];
                 $totalWeight                   = round($woocommerce->cart->cart_contents_weight);
@@ -360,13 +375,13 @@ if (in_array('woocommerce/woocommerce.php', apply_filters('active_plugins', get_
                 $billing_company               = $woocommerce->session->get('billing_company');
                 $billing_email                 = $woocommerce->session->get('billing_email');
                 $billing_phone                 = $woocommerce->session->get('billing_phone');
-				$shipping_first_name		   = $woocommerce->session->get('shipping_first_name');
-				$shipping_last_name			   = $woocommerce->session->get('shipping_last_name');
-				$shipping_to_differen_address  = $woocommerce->session->get('ship_to_different_address');
-				if($shipping_to_differen_address){
-					$billing_first_name = $shipping_first_name;
-					$billing_last_name  = $shipping_last_name;
-				}
+                $shipping_first_name           = $woocommerce->session->get('shipping_first_name');
+                $shipping_last_name            = $woocommerce->session->get('shipping_last_name');
+                $shipping_to_differen_address  = $woocommerce->session->get('ship_to_different_address');
+                if ($shipping_to_differen_address) {
+                    $billing_first_name = $shipping_first_name;
+                    $billing_last_name  = $shipping_last_name;
+                }
                 $observatii                    = $FAN_obsOnAWB;
                 //
                 $judete                        = array(
@@ -490,7 +505,7 @@ if (in_array('woocommerce/woocommerce.php', apply_filters('active_plugins', get_
                     $rambursare               = '';
                     $rambursare_number        = 0 + 0;
                     $plata_expeditiei_ramburs = "";
-                    if ((strtolower($localitate_dest) == "bucuresti") and is_numeric($valoare_fixa_bucuresti)) { // valoare fixa transport in Bucuresti
+                    if ((strtolower($localitate_dest) == "bucuresti") && is_numeric($valoare_fixa_bucuresti)) { // valoare fixa transport in Bucuresti
                         $valoare_fixa = $valoare_fixa_bucuresti;
                     }
                     //----------------------- Solicita Ramburs valoare marfa START -----------------------------
@@ -498,7 +513,7 @@ if (in_array('woocommerce/woocommerce.php', apply_filters('active_plugins', get_
                         if ($FAN_askForRbsInBankAccount == 'yes') { //solicitare ramburs in cont bancar
                             $rambursare        = number_format(round((float) $cartTotal, 2), 2, '.', '');
                             $rambursare_number = round((float) $cartTotal, 2) + 0;
-                            if ($min_gratuit < $rambursare_number and $min_gratuit != 0) { // suma minima transport gratuit
+                            if ($min_gratuit < $rambursare_number && $min_gratuit != 0) { // suma minima transport gratuit
                                 $totalrb = "0";
                             }
                             if ($FAN_rbsPaymentAtDestination == 'yes') { // plata AWB la destinatie
@@ -509,7 +524,7 @@ if (in_array('woocommerce/woocommerce.php', apply_filters('active_plugins', get_
                         } else {
                             $rambursare        = (string) number_format(round((float) $cartTotal, 2), 2, '.', '') . " LEI";
                             $rambursare_number = round((float) $cartTotal, 2) + 0;
-                            if ($min_gratuit < $rambursare_number and $min_gratuit != 0) { // suma minima transport gratuit
+                            if ($min_gratuit < $rambursare_number && $min_gratuit != 0) { // suma minima transport gratuit
                                 $totalrb = "0";
                             }
                             if ($FAN_rbsPaymentAtDestination == 'yes') { // plata AWB la destinatie
@@ -522,7 +537,7 @@ if (in_array('woocommerce/woocommerce.php', apply_filters('active_plugins', get_
                         $rambursare_number = round((float) $cartTotal, 2) + 0;
                     }
                     //------------------------------- Solicita Ramburs valoare marfa STOP -----------------------------
-                    if ($min_gratuit < $rambursare_number and $min_gratuit != 0) //cand min gratuit mai mic ca ramburs trec automat plata la expeditor
+                    if ($min_gratuit < $rambursare_number && $min_gratuit != 0) //cand min gratuit mai mic ca ramburs trec automat plata la expeditor
                         {
                         $plata_expeditiei = "expeditor";
                     }
@@ -582,77 +597,110 @@ if (in_array('woocommerce/woocommerce.php', apply_filters('active_plugins', get_
                         $optiuni .= "X";
                     }
                     //---------- Preluare adresa, nume, telefon, email STOP --------------
-                    $url = 'http://www.selfawb.ro/order.php';
-                    $c   = curl_init($url);
-                    curl_setopt($c, CURLOPT_POST, true);
-                    curl_setopt($c, CURLOPT_POSTFIELDS, "username=$FAN_clientAccount&user_pass=$FAN_password&client_id=$FAN_clientId&return=services");
-                    curl_setopt($c, CURLOPT_RETURNTRANSFER, true);
-                    $page = curl_exec($c);
-                    curl_close($c);
-                    $servicii_data = explode("\n", ltrim(rtrim($page))); // COMPATIBIL PENTRU VERSIUNE PHP < 5.2.X
+                    $page = $this->request('order.php', ['return' => 'services']);
+                    
+                    $servicii_data = explode("\n", ltrim(rtrim($page)));
                     foreach ($servicii_data as $tip_serviciu_info) {
                         $tip_serviciu_info = str_replace('"', '', $tip_serviciu_info);
-                        $tip_serviciu      = explode(",", $tip_serviciu_info);
-                        $url               = 'http://www.selfawb.ro/order.php';
-                        $c                 = curl_init($url);
-                        curl_setopt($c, CURLOPT_POST, true);
-                        curl_setopt($c, CURLOPT_POSTFIELDS, "username=$FAN_clientAccount&user_pass=$FAN_password&client_id=$FAN_clientId&plata_expeditiei=$plata_expeditiei&tip_serviciu=$tip_serviciu[0]&localitate_dest=
-                                                                                        $localitate_dest&judet_dest=$judet_dest&plic=$plic&colet=$colet&greutate=$greutate&lungime=$lungime&latime=$latime&inaltime=$inaltime&valoare_declarata=
-                                                                                        $valoaredeclarata&plata_ramburs=$plata_expeditiei_ramburs&ramburs=$rambursare&pers_contact_expeditor=$FAN_contactPerson&observatii=$observatii&continut=
-                                                                                        $continut&nume_destinatar=$nume_destinatar&persoana_contact=$persoana_contact&telefon=$telefon&email=$email&strada=$strada&postalcode=$postalcode&totalrb=
-                                                                                        $totalrb&admin=$onlyadm&fara_tva=$fara_tva&suma_fixa=$valoare_fixa&doar_km=$doar_km&optiuni=$optiuni");
-                        curl_setopt($c, CURLOPT_RETURNTRANSFER, true);
-                        $page = curl_exec($c);
-                        curl_close($c);
+                        $tip_serviciu      = explode(",", $tip_serviciu_info) + [null, null, null, null, null];
+
+                        $page = $this->request('order.php', [
+                            'plata_expeditiei'        => $plata_expeditiei,
+                            'tip_serviciu'            => $tip_serviciu[0],
+                            'localitate_dest'         => $localitate_dest,
+                            'judet_dest'              => $judet_dest,
+                            'plic'                    => $plic,
+                            'colet'                   => $colet,
+                            'greutate'                => $greutate,
+                            'lungime'                 => $lungime,
+                            'latime'                  => $latime,
+                            'inaltime'                => $inaltime,
+                            'valoare_declarata'       => $valoaredeclarata,
+                            'plata_ramburs'           => $plata_expeditiei_ramburs,
+                            'ramburs'                 => $rambursare,
+                            'pers_contact_expeditor'  => $FAN_contactPerson,
+                            'observatii'              => $observatii,
+                            'continut'                => $continut,
+                            'nume_destinatar'         => $nume_destinatar,
+                            'persoana_contact'        => $persoana_contact,
+                            'telefon'                 => $telefon,
+                            'email'                   => $email,
+                            'strada'                  => $strada,
+                            'postalcode'              => $postalcode,
+                            'totalrb'                 => $totalrb,
+                            'admin'                   => $onlyadm,
+                            'fara_tva'                => $fara_tva,
+                            'suma_fixa'               => $valoare_fixa,
+                            'doar_km'                 => $doar_km,
+                            'optiuni'                 => $optiuni,
+                        ]);
+                        
                         $price = explode("|||", $page);
-						$add_shipping_option = false;
-                        if (($FAN_askForRbsInBankAccount == "no" or $FAN_askForRbsGoodsValue == "no")) {
-                            if ($tip_serviciu[1] == 0 and (($tip_serviciu[2] == 0 and $tip_serviciu[3] == 0) or ($tip_serviciu[2] == 1 and $FAN_redCodeOption == "yes") or ($tip_serviciu[3] == 1 and $FAN_expressLocoOption == "yes"))){
-								$add_shipping_option = true;
-							}
+                        $add_shipping_option = false;
+                        if (($FAN_askForRbsInBankAccount == "no" || $FAN_askForRbsGoodsValue == "no")) {
+                            if (
+                                $tip_serviciu[1] == 0 && 
+                                (
+                                    ($tip_serviciu[2] == 0 && $tip_serviciu[3] == 0) ||
+                                    ($tip_serviciu[2] == 1 && $FAN_redCodeOption == "yes") ||
+                                    ($tip_serviciu[3] == 1 && $FAN_expressLocoOption == "yes")
+                                )){
+                                $add_shipping_option = true;
+                            }
                         } else{
-							if ($tip_serviciu[1] == 1 and (($tip_serviciu[2] == 0 and $tip_serviciu[3] == 0) or ($tip_serviciu[2] == 1 and $FAN_redCodeOption == 'yes') or ($tip_serviciu[3] == 1 and $FAN_expressLocoOption == 'yes'))){
-								$add_shipping_option = true;
-							}
-						}
-						if($add_shipping_option){
-							if (isset($price[1])) {
-								if (($FAN_hideShippingRate == "no") and ($min_gratuit > $rambursare_number or $min_gratuit == 0)) {
-									$price_standard = $price[0];
-								} else
-									$price_standard = 0;
-								$link_standard = $price[1];
-							} else {
-								$price_standard = "";
-								$message        = $price[0];
-								$messageType    = "error";
-								if (!wc_has_notice($message, $messageType) and isset($judet_dest) and trim($judet_dest) != "" and isset($localitate_dest) and trim($localitate_dest) != "") {
-									wc_add_notice($message, $messageType);
-								}
-							}
-							if (is_numeric($price_standard) and $link_standard != "") { // daca am adresa corecta afisez TIP SERVICIU si PRET
-								$args = array(
-									'id' => $this->id,
-									'label' => "FAN Courier",
-									'cost' => $price_standard,
-									'taxes' => false,
-									'meta_data' => array(
-											'link_id' => $link_standard,
-											'tip_serviciu' => $tip_serviciu[0],
-										),
-								);
-								$this->add_rate($args);
-							} else { // daca NU am adresa corecta afisez mesaj eroare
-								if ($tip_serviciu[2] == 0 and $tip_serviciu[3] == 0) {
-									$args = array();
-									$this->add_rate($args);
-								}
-							}
-							
-						}
+                            if (
+                                $tip_serviciu[1] == 1 &&
+                                (
+                                    ($tip_serviciu[2] == 0 && $tip_serviciu[3] == 0) ||
+                                    ($tip_serviciu[2] == 1 && $FAN_redCodeOption == 'yes') ||
+                                    ($tip_serviciu[3] == 1 && $FAN_expressLocoOption == 'yes')
+                                )
+                            ){
+                                $add_shipping_option = true;
+                            }
+                        }
+                        if ($add_shipping_option) {
+                            if (isset($price[1])) {
+                                if (($FAN_hideShippingRate == "no") && ($min_gratuit > $rambursare_number || $min_gratuit == 0)) {
+                                    $price_standard = $price[0];
+                                } else
+                                    $price_standard = 0;
+                                $link_standard = $price[1];
+                            } else {
+                                $price_standard = "";
+                                $message        = $price[0];
+                                $messageType    = "error";
+                                if (
+                                    !wc_has_notice($message, $messageType) &&
+                                    isset($judet_dest) && 
+                                    trim($judet_dest) != "" 
+                                    && isset($localitate_dest) && 
+                                    trim($localitate_dest) != ""
+                                    ) {
+                                    wc_add_notice($message, $messageType);
+                                }
+                            }
+                            if (is_numeric($price_standard) && $link_standard != "") { // daca am adresa corecta afisez TIP SERVICIU si PRET
+                                $args = array(
+                                    'id'        => $this->id,
+                                    'label'     => "FAN Courier",
+                                    'cost'      => $price_standard,
+                                    'taxes'     => false,
+                                    'meta_data' => array(
+                                        'link_id'       => $link_standard,
+                                        'tip_serviciu'  => $tip_serviciu[0],
+                                    ),
+                                );
+                                $this->add_rate($args);
+                            } else { // daca NU am adresa corecta afisez mesaj eroare
+                                if ($tip_serviciu[2] == 0 && $tip_serviciu[3] == 0) {
+                                    $args = array();
+                                    $this->add_rate($args);
+                                }
+                            }
+                        }
                     }
                 } //------------------------ Conditii FAN STOP----------------------------
-                
             }
         }
     }
@@ -661,7 +709,7 @@ if (in_array('woocommerce/woocommerce.php', apply_filters('active_plugins', get_
     {
         $fields['billing']['billing_state']['class'][]  = 'update_totals_on_change';
         $fields['billing']['billing_city']['class'][]   = 'update_totals_on_change';
-		$fields['billing']['billing_phone']['class'][]  = 'update_totals_on_change';
+        $fields['billing']['billing_phone']['class'][]  = 'update_totals_on_change';
         return $fields;
     }
     add_action('woocommerce_shipping_init', 'fan_courier_init');
@@ -673,13 +721,12 @@ if (in_array('woocommerce/woocommerce.php', apply_filters('active_plugins', get_
     add_filter('woocommerce_shipping_methods', 'add_fan_courier_method');
     // overwrite fancourier label admin only
     function change_fancourier_label($label, $method){
-		if (current_user_can('administrator') and 'fan_courier' === $method->method_id) {
-			$link_id           = $method->meta_data['link_id'];
-			$tip_serviciu 		 = $method->meta_data['tip_serviciu'];
-			$label .= "<br><a href=\"http://www.selfawb.ro/order.php?order_id=$link_id\" target=\"_blank\"><u>Debug - $tip_serviciu</u></a>";
-			}
-			
-		return $label;
+        if (current_user_can('administrator') && 'fan_courier' === $method->method_id) {
+            $link_id           = $method->meta_data['link_id'];
+            $tip_serviciu      = $method->meta_data['tip_serviciu'];
+            $label .= "<br><a href=\"http://www.selfawb.ro/order.php?order_id=$link_id\" target=\"_blank\"><u>Debug - $tip_serviciu</u></a>";
+        }
+        return $label;
     }
     add_filter('woocommerce_cart_shipping_method_full_label', 'change_fancourier_label', 10, 3);
 
@@ -689,22 +736,22 @@ if (in_array('woocommerce/woocommerce.php', apply_filters('active_plugins', get_
     {
         $fields['billing']['billing_state']['required']   = true;
         $fields['shipping']['shipping_state']['required'] = true;
-		$fields['billing']['billing_phone']['required'] = true;
+        $fields['billing']['billing_phone']['required'] = true;
 
         return $fields;
     }
     add_action('woocommerce_checkout_update_order_review', 'get_customer_details');
     function get_customer_details($post_data)
     {
-		$update_shipping_awb = true;
+        $update_shipping_awb = true;
         $details = array(
             'billing_first_name',
             'billing_last_name',
             'billing_company',
             'billing_email',
             'billing_phone',
-			'shipping_first_name',
-			'shipping_last_name',
+            'shipping_first_name',
+            'shipping_last_name',
         );
         $post    = array();
         $vars    = explode('&', $post_data);
@@ -713,30 +760,30 @@ if (in_array('woocommerce/woocommerce.php', apply_filters('active_plugins', get_
             $post[$v[0]] = $v[1];
         }
         foreach ($details as $key) {
-			if(isset($post[$key])){
-				WC()->session->set($key, $post[$key]);
-				if (empty($post[$key]) and !in_array($key,  array('billing_company', 'shipping_first_name', 'shipping_last_name'))){
-					$update_shipping_awb = false;
-				}
-			}
+            if(isset($post[$key])){
+                WC()->session->set($key, $post[$key]);
+                if (empty($post[$key]) && !in_array($key,  array('billing_company', 'shipping_first_name', 'shipping_last_name'))){
+                    $update_shipping_awb = false;
+                }
+            }
         }
-		if(isset($post['ship_to_different_address'])){
-			WC()->session->set('ship_to_different_address', true);
-		}else{
-			WC()->session->set('ship_to_different_address', false);
-		}
-		if(isset($post['tip_facturare'])){
-			if($post['tip_facturare'] == 'pers-fiz'){
-				WC()->session->set('billing_company', '');
-			}
-		}
-		if($update_shipping_awb){
-			foreach ( WC()->cart->get_shipping_packages() as $package_key => $package ){
-				WC()->session->set( 'shipping_for_package_' . $package_key, true);
-			}
-		}
+        if(isset($post['ship_to_different_address'])){
+            WC()->session->set('ship_to_different_address', true);
+        }else{
+            WC()->session->set('ship_to_different_address', false);
+        }
+        if(isset($post['tip_facturare'])){
+            if($post['tip_facturare'] == 'pers-fiz'){
+                WC()->session->set('billing_company', '');
+            }
+        }
+        if($update_shipping_awb){
+            foreach ( WC()->cart->get_shipping_packages() as $package_key => $package ){
+                WC()->session->set( 'shipping_for_package_' . $package_key, true);
+            }
+        }
     }
-	
+    
     //-----------------------------FAN stop------------------------
     
 }
